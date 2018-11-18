@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Simple websocket client</title>
+	<style type="text/css">
+		#player
+		{
+			position: absolute;
+			width: 100px;
+			height: 100px;
+
+			background-color: #e27a2d;
+		}
+	</style>
+</head>
+<body>
+	<div id="player" style="top: 0px; left: 0px;"></div>
+	<script type="text/javascript">
+		// https://stackoverflow.com/a/5647103
+		if (location.hash.length <= 1)
+		{
+			location.hash = "hostname=127.0.0.1&port=7000";
+		}
+
+		let locationHashMap = location.hash.substr(1, location.hash.length-1)
+	      .split("&")
+	      .map(v => v.split("="))
+	      .reduce( (pre, [key, value]) => ({ ...pre, [key]: value }), {} );
+
+	    console.log("Received hashmap %o", locationHashMap);
+
+	    // websocket client connection + event setup
+	    const URI = `ws://${locationHashMap.hostname}:${locationHashMap.port}`;
+		const websocketClient = new WebSocket(URI);
+	    console.log("Connecting to: " + URI);
+
+	    // global parameter required to update correct session
+	    let sessionID = -1;
+
+		websocketClient.onopen = (openEvent) => {
+			console.group("Successfully connected");
+			console.log(openEvent);
+			console.groupEnd();
+
+			websocketClient.send('{"command":"createSession","parameters": {"playerPositionX":20,"playerPositionY":20,"health":200}}');
+		};
+		websocketClient.onerror = (errorEvent) => {
+			console.group("Error during WebSocket connection");
+			console.log(errorEvent);
+			console.groupEnd();
+		};
+		websocketClient.onmessage = (messageEvent) => {
+			console.group("New message");
+			console.log(messageEvent);
+			console.groupEnd();
+
+			const parsedMessage = JSON.parse(messageEvent.data);
+			switch(parsedMessage.command)
+			{
+				case "sessionJoin":
+					sessionID = parsedMessage.sessionID;
+					break;
+			}
+		};
+	</script>
+	<script type="text/javascript">
+		window.addEventListener("keypress", (keydownevent) =>
+		{
+			switch (keydownevent.key)
+			{
+				case "w":
+					nudgePlayer(0, 1);
+					break;
+				case "s":
+					nudgePlayer(0, -1);
+					break;
+				case "a":
+					nudgePlayer(-1, 0);
+					break;
+				case "d":
+					nudgePlayer(1, 0);
+					break;
+			}
+		});
+
+		const nudgePlayer = (x, y) =>
+		{
+			const speed = 5;
+			console.log(`nudge: ${x}, ${y}`);
+			document.querySelector("#player").style.left =	(parseInt(document.querySelector("#player").style.left.replace("px", "")) + x*speed) + "px";
+			document.querySelector("#player").style.top = 	(parseInt(document.querySelector("#player").style.top.replace("px", "")) - y*speed) + "px";
+			sendUpdate();
+		};
+
+		const sendUpdate = () =>
+		{
+			if (sessionID == -1)
+			{
+				return;
+			}
+
+			const sessionData = {
+				"playerPositionX": parseInt(document.querySelector("#player").style.left.replace("px", "")),
+				"playerPositionY": parseInt(document.querySelector("#player").style.top.replace("px", "")),
+				"health": 50
+			};
+
+			websocketClient.send(JSON.stringify({
+				"command": "updateSession",
+				"sessionID": sessionID,
+				"parameters": sessionData
+			}));
+		};
+	</script>
+</body>
+</html>
