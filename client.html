@@ -4,7 +4,7 @@
 	<meta charset="UTF-8">
 	<title>Simple websocket client</title>
 	<style type="text/css">
-		#player
+		.player
 		{
 			position: absolute;
 			width: 100px;
@@ -15,7 +15,8 @@
 	</style>
 </head>
 <body>
-	<div id="player" style="top: 0px; left: 0px;"></div>
+	<button onclick="createSession();">createSession</button>
+	<button onclick="joinSession(prompt('specify session ID', -1));">joinSession</button>
 	<script type="text/javascript">
 		// https://stackoverflow.com/a/5647103
 		if (location.hash.length <= 1)
@@ -37,13 +38,12 @@
 
 	    // global parameter required to update correct session
 	    let sessionID = -1;
+	    let playerID = -1;
 
 		websocketClient.onopen = (openEvent) => {
 			console.group("Successfully connected");
 			console.log(openEvent);
 			console.groupEnd();
-
-			websocketClient.send('{"command":"createSession","parameters": {"playerPositionX":20,"playerPositionY":20,"health":200}}');
 		};
 		websocketClient.onerror = (errorEvent) => {
 			console.group("Error during WebSocket connection");
@@ -60,9 +60,49 @@
 			{
 				case "sessionJoin":
 					sessionID = parsedMessage.sessionID;
+					playerID = parsedMessage.playerID;
+					playerJoin(parsedMessage.playerID, parsedMessage.player);
+					break;
+				case "playerJoin":
+					playerJoin(parsedMessage.playerID, parsedMessage.player);
+					break;
+				case "playerUpdate":
+					playerUpdate(parsedMessage.playerID, parsedMessage.player);
 					break;
 			}
 		};
+		let players = {};
+
+		const joinSession = (sessionID) =>
+		{
+			websocketClient.send('{"command":"joinSession","sessionID":'+sessionID+'}');
+		}
+		const createSession = (sessionID) =>
+		{
+			websocketClient.send('{"command":"createSession","session":{"mapName":"castle","timelimit":180000,"currentMatchStart":1543943190000},"player":{"name":"NowYouSeeMe","position":{"x":0.0,"y":0.0},"colorHex":2980578}}');
+		}
+		const playerJoin = (ID, playerInfo) =>
+		{
+			console.log("NEW PLAYER " + ID);
+			players[ID] = new Player(ID);
+			players[ID].Update(playerInfo);
+		};
+		const playerLeave = (ID) =>
+		{
+			delete players[ID];
+		}
+		const playerUpdate = (ID, playerInfo) =>
+		{
+			console.log("UPDATE FOR PLAYER " + ID);
+			players[ID].Update(playerInfo);
+		};
+
+		setInterval(() => 
+		{
+			Object.values(players).forEach((player) => {
+				player.Render();
+			});
+		}, (1/60) * 100);
 	</script>
 	<script type="text/javascript">
 		window.addEventListener("keypress", (keydownevent) =>
@@ -86,31 +126,57 @@
 
 		const nudgePlayer = (x, y) =>
 		{
-			const speed = 5;
-			console.log(`nudge: ${x}, ${y}`);
-			document.querySelector("#player").style.left =	(parseInt(document.querySelector("#player").style.left.replace("px", "")) + x*speed) + "px";
-			document.querySelector("#player").style.top = 	(parseInt(document.querySelector("#player").style.top.replace("px", "")) - y*speed) + "px";
-			sendUpdate();
+			const newX = players[playerID].position.x + x;
+			const newY = players[playerID].position.y + y;
+
+			sendUpdate(newX, newY);
 		};
 
-		const sendUpdate = () =>
+		const sendUpdate = (x, y) =>
 		{
-			if (sessionID == -1)
+			websocketClient.send(JSON.stringify({
+				"command": "updatePlayer",
+				"player": {
+					"name": players[playerID].name,
+					"position": {
+						"x": x,
+						"y": y
+					},
+					"colorHex": players[playerID].color
+				}
+			}));
+		};
+
+		class Player
+		{
+			constructor(ID)
 			{
-				return;
+				this.ID = ID;
+				this.name = "";
+				this.color = -1;
+				this.position = {x: -1, y: -1}
+
+				this.element = document.createElement("div");
+				document.body.appendChild(this.element);
+				this.element.style.left = "-5000px";
+				this.element.style.top = "-5000px";
+				this.element.classList.add("player");
+				this.element.classList.add("player-"+ID);
 			}
 
-			const sessionData = {
-				"playerPositionX": parseInt(document.querySelector("#player").style.left.replace("px", "")),
-				"playerPositionY": parseInt(document.querySelector("#player").style.top.replace("px", "")),
-				"health": 50
-			};
+			Render()
+			{
+				this.element.style.left =	this.position.x * 5 + "px";
+				this.element.style.top = -this.position.y * 5 + "px";
+			}
 
-			websocketClient.send(JSON.stringify({
-				"command": "updateSession",
-				"sessionID": sessionID,
-				"parameters": sessionData
-			}));
+			Update(updateInfo)
+			{
+				this.name = updateInfo.name;
+				this.color = updateInfo.colorHex;
+				this.position.x = updateInfo.position.x;
+				this.position.y = updateInfo.position.y;
+			}
 		};
 	</script>
 </body>
