@@ -18,44 +18,69 @@
 	<button onclick="createSession();">createSession</button>
 	<button onclick="joinSession(prompt('specify session ID', -1));">joinSession</button>
 	<script type="text/javascript">
+
+		// https://stackoverflow.com/a/122190
+		function clone(obj) {
+		    if (obj === null || typeof (obj) !== 'object' || 'isActiveClone' in obj)
+		        return obj;
+
+		    if (obj instanceof Date)
+		        var temp = new obj.constructor(); //or new Date(obj);
+		    else
+		        var temp = obj.constructor();
+
+		    for (var key in obj) {
+		        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+		            obj['isActiveClone'] = null;
+		            temp[key] = clone(obj[key]);
+		            delete obj['isActiveClone'];
+		        }
+		    }
+		    return temp;
+		}
+
 		// https://stackoverflow.com/a/5647103
 		if (location.hash.length <= 1)
 		{
 			location.hash = "hostname=127.0.0.1&port=7000";
 		}
 
-		let locationHashMap = location.hash.substr(1, location.hash.length-1)
-	      .split("&")
-	      .map(v => v.split("="))
-	      .reduce( (pre, [key, value]) => ({ ...pre, [key]: value }), {} );
+		var locationHashSplit = location.hash.substr(1, location.hash.length-1)
+	      .split("&");
+	    var locationHashMap = {};
+	    locationHashSplit.forEach(function (item)
+	    {
+	    	var splitItem = item.split("=");
+	    	locationHashMap[splitItem[0]] = splitItem[1];
+	    });
 
 	    console.log("Received hashmap %o", locationHashMap);
 
 	    // websocket client connection + event setup
-	    const URI = `ws://${locationHashMap.hostname}:${locationHashMap.port}`;
-		const websocketClient = new WebSocket(URI);
+	    var URI = "ws://"+locationHashMap.hostname+":"+locationHashMap.port;
+		var websocketClient = new WebSocket(URI);
 	    console.log("Connecting to: " + URI);
 
 	    // global parameter required to update correct session
-	    let sessionID = -1;
-	    let playerID = -1;
+	    var sessionID = -1;
+	    var playerID = -1;
 
-		websocketClient.onopen = (openEvent) => {
+		websocketClient.onopen = function (openEvent) {
 			console.group("Successfully connected");
 			console.log(openEvent);
 			console.groupEnd();
 		};
-		websocketClient.onerror = (errorEvent) => {
+		websocketClient.onerror = function (errorEvent) {
 			console.group("Error during WebSocket connection");
 			console.log(errorEvent);
 			console.groupEnd();
 		};
-		websocketClient.onmessage = (messageEvent) => {
+		websocketClient.onmessage = function (messageEvent) {
 			console.group("New message");
 			console.log(messageEvent);
 			console.groupEnd();
 
-			const parsedMessage = JSON.parse(messageEvent.data);
+			var parsedMessage = JSON.parse(messageEvent.data);
 			switch(parsedMessage.command)
 			{
 				case "sessionJoin":
@@ -71,41 +96,43 @@
 					break;
 			}
 		};
-		let players = {};
+		var players = {};
 
-		const joinSession = (sessionID) =>
+		function joinSession(sessionID)
 		{
 			websocketClient.send('{"command":"joinSession","sessionID":'+sessionID+'}');
 		}
-		const createSession = (sessionID) =>
+		function createSession(sessionID)
 		{
 			websocketClient.send('{"command":"createSession","session":{"mapName":"castle","timelimit":180000,"currentMatchStart":1543943190000},"player":{"name":"NowYouSeeMe","position":{"x":0.0,"y":0.0},"colorHex":2980578}}');
 		}
-		const playerJoin = (ID, playerInfo) =>
+		function playerJoin(ID, playerInfo)
 		{
 			console.log("NEW PLAYER " + ID);
-			players[ID] = new Player(ID);
+			players[ID] = clone(Player);
+			players[ID].Constructor(ID);
 			players[ID].Update(playerInfo);
 		};
-		const playerLeave = (ID) =>
+		function playerLeave(ID)
 		{
 			delete players[ID];
 		}
-		const playerUpdate = (ID, playerInfo) =>
+		function playerUpdate(ID, playerInfo)
 		{
 			console.log("UPDATE FOR PLAYER " + ID);
 			players[ID].Update(playerInfo);
 		};
 
-		setInterval(() => 
+		setInterval(function () 
 		{
-			Object.values(players).forEach((player) => {
-				player.Render();
-			});
+			for (key in players)
+			{
+				players[key].Render();
+			}
 		}, (1/60) * 100);
 	</script>
 	<script type="text/javascript">
-		window.addEventListener("keypress", (keydownevent) =>
+		window.addEventListener("keypress", function (keydownevent)
 		{
 			switch (keydownevent.key)
 			{
@@ -124,15 +151,15 @@
 			}
 		});
 
-		const nudgePlayer = (x, y) =>
+		function nudgePlayer(x, y)
 		{
-			const newX = players[playerID].position.x + x;
-			const newY = players[playerID].position.y + y;
+			var newX = players[playerID].position.x + x;
+			var newY = players[playerID].position.y + y;
 
 			sendUpdate(newX, newY);
 		};
 
-		const sendUpdate = (x, y) =>
+		function sendUpdate(x, y)
 		{
 			websocketClient.send(JSON.stringify({
 				"command": "updatePlayer",
@@ -147,9 +174,9 @@
 			}));
 		};
 
-		class Player
+		var Player = 
 		{
-			constructor(ID)
+			Constructor: function(ID)
 			{
 				this.ID = ID;
 				this.name = "";
@@ -162,15 +189,15 @@
 				this.element.style.top = "-5000px";
 				this.element.classList.add("player");
 				this.element.classList.add("player-"+ID);
-			}
+			},
 
-			Render()
+			Render: function()
 			{
 				this.element.style.left =	this.position.x * 5 + "px";
 				this.element.style.top = -this.position.y * 5 + "px";
-			}
+			},
 
-			Update(updateInfo)
+			Update: function(updateInfo)
 			{
 				this.name = updateInfo.name;
 				this.color = updateInfo.colorHex;
